@@ -82,7 +82,7 @@ link_directories(/usr/local/lib)
 link_directories(/usr/lib)
 
 set(MAIN_SOURCES
-        src/main.cpp)
+        src/main.cpp src/tracker.h src/fftutils.h src/gradient.cpp src/gradient.h src/sse.h src/gradientutils.h)
 
 #
 # Add all CPP Object files
