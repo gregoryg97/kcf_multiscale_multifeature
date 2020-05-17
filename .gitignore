@@ -1,3 +1,7 @@
+# Ignore build directory
+cmake-build-debug/
+.idea/
+
 # Prerequisites
 *.d
 
