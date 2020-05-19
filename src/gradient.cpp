@@ -10,7 +10,7 @@
 #define PI 3.14159265f
 
 void gradQuantize(float *O, float *M, int *O0, int *O1, float *M0, float *M1, int nb, int n,
-        float norm, int nOrients, bool full, bool interpolate) {
+                  float norm, int nOrients, bool full, bool interpolate) {
     // Assume all matrices that are outputs are 4byte aligned
     // This is for purposes of SIMD using the SSE included wrapper
     int i, o0, o1;
@@ -19,73 +19,83 @@ void gradQuantize(float *O, float *M, int *O0, int *O1, float *M0, float *M1, in
     __m128i _o0, _o1, *_O0, *_O1;
     __m128 _o, _od, _m, *_M0, *_M1;
 
-    const float oMult = (float)nOrients/(full?2*PI:PI);
-    const int oMax = nOrients*nb;
-    const __m128 _norm = SET(norm), _oMult = SET(oMult), _nbf = SET((float)nb);
+    const float oMult = (float) nOrients / (full ? 2 * PI : PI);
+    const int oMax = nOrients * nb;
+    const __m128 _norm = SET(norm), _oMult = SET(oMult), _nbf = SET((float) nb);
     const __m128i _oMax = SET(oMax), _nb = SET(nb);
 
     // Perform as much of the compute as possible using SSE
-    _O0 = (__m128i*)O0; _O1 = (__m128i*)O1; _M0 = (__m128*)M0; _M1 = (__m128*)M1;
+    _O0 = (__m128i *) O0;
+    _O1 = (__m128i *) O1;
+    _M0 = (__m128 *) M0;
+    _M1 = (__m128 *) M1;
     if (interpolate) {
-        for (i = 0; i <= n - 4; i += 4){
-            _o=MUL(LDu(O[i]),_oMult);
-            _o0=CVT(_o);
-            _od=SUB(_o,CVT(_o0));
-            _o0=CVT(MUL(CVT(_o0),_nbf));
-            _o0=AND(CMPGT(_oMax,_o0),_o0);
-            *_O0++=_o0;
-            _o1=ADD(_o0,_nb);
-            _o1=AND(CMPGT(_oMax,_o1),_o1);
-            *_O1++=_o1;
-            _m=MUL(LDu(M[i]),_norm);
-            *_M1=MUL(_od,_m);
-            *_M0++=SUB(_m,*_M1); _M1++;
+        for (i = 0; i <= n - 4; i += 4) {
+            _o = MUL(LDu(O[i]), _oMult);
+            _o0 = CVT(_o);
+            _od = SUB(_o, CVT(_o0));
+            _o0 = CVT(MUL(CVT(_o0), _nbf));
+            _o0 = AND(CMPGT(_oMax, _o0), _o0);
+            *_O0++ = _o0;
+            _o1 = ADD(_o0, _nb);
+            _o1 = AND(CMPGT(_oMax, _o1), _o1);
+            *_O1++ = _o1;
+            _m = MUL(LDu(M[i]), _norm);
+            *_M1 = MUL(_od, _m);
+            *_M0++ = SUB(_m, *_M1);
+            _M1++;
         }
     } else {
         for (i = 0; i <= n - 4; i += 4) {
-            _o=MUL(LDu(O[i]),_oMult);
-            _o0=CVT(ADD(_o,SET(.5f)));
-            _o0=CVT(MUL(CVT(_o0),_nbf));
-            _o0=AND(CMPGT(_oMax,_o0),_o0);
-            *_O0++=_o0;
-            *_M0++=MUL(LDu(M[i]),_norm);
-            *_M1++=SET(0.f);
-            *_O1++=SET(0);
+            _o = MUL(LDu(O[i]), _oMult);
+            _o0 = CVT(ADD(_o, SET(.5f)));
+            _o0 = CVT(MUL(CVT(_o0), _nbf));
+            _o0 = AND(CMPGT(_oMax, _o0), _o0);
+            *_O0++ = _o0;
+            *_M0++ = MUL(LDu(M[i]), _norm);
+            *_M1++ = SET(0.f);
+            *_O1++ = SET(0);
         }
     }
 
     // Remaining non-aligned computation to be performed without SSE
-    if(interpolate) {
-        for(; i<n; i++ ) {
-            o=O[i]*oMult;
-            o0=(int) o;
-            od=o-o0;
-            o0*=nb;
-            if(o0>=oMax) o0=0; O0[i]=o0;
-            o1=o0+nb;
-            if(o1==oMax) o1=0; O1[i]=o1;
-            m=M[i]*norm; M1[i]=od*m; M0[i]=m-M1[i];
+    if (interpolate) {
+        for (; i < n; i++) {
+            o = O[i] * oMult;
+            o0 = (int) o;
+            od = o - o0;
+            o0 *= nb;
+            if (o0 >= oMax) o0 = 0;
+            O0[i] = o0;
+            o1 = o0 + nb;
+            if (o1 == oMax) o1 = 0;
+            O1[i] = o1;
+            m = M[i] * norm;
+            M1[i] = od * m;
+            M0[i] = m - M1[i];
         }
     } else {
-        for(; i<n; i++ ) {
-            o=O[i]*oMult;
-            o0=(int) (o+.5f);
-            o0*=nb;
-            if(o0>=oMax) o0=0; O0[i]=o0;
-            M0[i]=M[i]*norm;
-            M1[i]=0; O1[i]=0;
+        for (; i < n; i++) {
+            o = O[i] * oMult;
+            o0 = (int) (o + .5f);
+            o0 *= nb;
+            if (o0 >= oMax) o0 = 0;
+            O0[i] = o0;
+            M0[i] = M[i] * norm;
+            M1[i] = 0;
+            O1[i] = 0;
         }
     }
 }
 
 void gradHist(float *M, float *O, float *H, int h, int w, int bin, int nOrients, int softBin, bool full) {
-    const int hb=h/bin;
-    const int wb=w/bin;
-    const int h0=hb*bin;
-    const int w0=wb*bin;
-    const int nb=wb*hb;
+    const int hb = h / bin;
+    const int wb = w / bin;
+    const int h0 = hb * bin;
+    const int w0 = wb * bin;
+    const int nb = wb * hb;
 
-    const float s=(float)bin, sInv=1/s, sInv2=1/s/s;
+    const float s = (float) bin, sInv = 1 / s, sInv2 = 1 / s / s;
 
     float *H0, *H1, *M0, *M1;
 
@@ -94,10 +104,10 @@ void gradHist(float *M, float *O, float *H, int h, int w, int bin, int nOrients,
 
     float xb, init;
 
-    O0 = (int*)utils::memory::alMalloc(h*sizeof(int), 16);
-    M0 = (float*)utils::memory::alMalloc(h*sizeof(float), 16);
-    O1 = (int*)utils::memory::alMalloc(h*sizeof(int), 16);
-    M1 = (float*)utils::memory::alMalloc(h*sizeof(float), 16);
+    O0 = (int *) utils::memory::alMalloc(h * sizeof(int), 16);
+    M0 = (float *) utils::memory::alMalloc(h * sizeof(float), 16);
+    O1 = (int *) utils::memory::alMalloc(h * sizeof(int), 16);
+    M1 = (float *) utils::memory::alMalloc(h * sizeof(float), 16);
 
     for (x = 0; x < w0; x++) {
         gradQuantize(O + x * h, M + x * h, O0, O1, M0, M1, nb, h0, sInv2,
@@ -269,12 +279,169 @@ void gradHist(float *M, float *O, float *H, int h, int w, int bin, int nOrients,
     utils::memory::alFree(M1);
 
     // normalize boundary bins which only get 7/8 of weight of interior bins
-    if( softBin%2!=0 ) for( int o=0; o<nOrients; o++ ) {
-            x=0; for( y=0; y<hb; y++ ) H[o*nb+x*hb+y]*=8.f/7.f;
-            y=0; for( x=0; x<wb; x++ ) H[o*nb+x*hb+y]*=8.f/7.f;
-            x=wb-1; for( y=0; y<hb; y++ ) H[o*nb+x*hb+y]*=8.f/7.f;
-            y=hb-1; for( x=0; x<wb; x++ ) H[o*nb+x*hb+y]*=8.f/7.f;
+    if (softBin % 2 != 0)
+        for (int o = 0; o < nOrients; o++) {
+            x = 0;
+            for (y = 0; y < hb; y++) H[o * nb + x * hb + y] *= 8.f / 7.f;
+            y = 0;
+            for (x = 0; x < wb; x++) H[o * nb + x * hb + y] *= 8.f / 7.f;
+            x = wb - 1;
+            for (y = 0; y < hb; y++) H[o * nb + x * hb + y] *= 8.f / 7.f;
+            y = hb - 1;
+            for (x = 0; x < wb; x++) H[o * nb + x * hb + y] *= 8.f / 7.f;
         }
+}
+
+// HOG helper: compute 2x2 block normalization values (padded by 1 pixel)
+float *hogNormMatrix(float *H, int nOrients, int hb, int wb, int bin) {
+    float *N, *N1, *n;
+    int o, x, y, dx, dy, hb1 = hb + 1, wb1 = wb + 1;
+    float eps = 1e-4f / 4 / bin / bin / bin / bin; // precise backward equality
+    N = (float *) calloc(hb1 * wb1, sizeof(float));
+    N1 = N + hb1 + 1;
+    for (o = 0; o < nOrients; o++)
+        for (x = 0; x < wb; x++)
+            for (y = 0; y < hb; y++)
+                N1[x * hb1 + y] += H[o * wb * hb + x * hb + y] * H[o * wb * hb + x * hb + y];
+    for (x = 0; x < wb - 1; x++)
+        for (y = 0; y < hb - 1; y++) {
+            n = N1 + x * hb1 + y;
+            *n = 1 / float(sqrt(n[0] + n[1] + n[hb1] + n[hb1 + 1] + eps));
+        }
+    x = 0;
+    dx = 1;
+    dy = 1;
+    y = 0;
+    N[x * hb1 + y] = N[(x + dx) * hb1 + y + dy];
+    x = 0;
+    dx = 1;
+    dy = 0;
+    for (y = 0; y < hb1; y++) N[x * hb1 + y] = N[(x + dx) * hb1 + y + dy];
+    x = 0;
+    dx = 1;
+    dy = -1;
+    y = hb1 - 1;
+    N[x * hb1 + y] = N[(x + dx) * hb1 + y + dy];
+    x = wb1 - 1;
+    dx = -1;
+    dy = 1;
+    y = 0;
+    N[x * hb1 + y] = N[(x + dx) * hb1 + y + dy];
+    x = wb1 - 1;
+    dx = -1;
+    dy = 0;
+    for (y = 0; y < hb1; y++) N[x * hb1 + y] = N[(x + dx) * hb1 + y + dy];
+    x = wb1 - 1;
+    dx = -1;
+    dy = -1;
+    y = hb1 - 1;
+    N[x * hb1 + y] = N[(x + dx) * hb1 + y + dy];
+    y = 0;
+    dx = 0;
+    dy = 1;
+    for (x = 0; x < wb1; x++) N[x * hb1 + y] = N[(x + dx) * hb1 + y + dy];
+    y = hb1 - 1;
+    dx = 0;
+    dy = -1;
+    for (x = 0; x < wb1; x++) N[x * hb1 + y] = N[(x + dx) * hb1 + y + dy];
+    return N;
+}
+
+void gradMag( float *I, float *M, float *O, int h, int w, int d, bool full ) {
+    int x, y, y1, c, h4, s; float *Gx, *Gy, *M2; __m128 *_Gx, *_Gy, *_M2, _m;
+    float *acost = acosTable(), acMult=10000.0f;
+    // allocate memory for storing one column of output (padded so h4%4==0)
+    h4=(h%4==0) ? h : h-(h%4)+4; s=d*h4*sizeof(float);
+    M2=(float*) utils::memory::alMalloc(s,16); _M2=(__m128*) M2;
+    Gx=(float*) utils::memory::alMalloc(s,16); _Gx=(__m128*) Gx;
+    Gy=(float*) utils::memory::alMalloc(s,16); _Gy=(__m128*) Gy;
+    // compute gradient magnitude and orientation for each column
+    for( x=0; x<w; x++ ) {
+        // compute gradients (Gx, Gy) with maximum squared magnitude (M2)
+        for(c=0; c<d; c++) {
+            grad1( I+x*h+c*w*h, Gx+c*h4, Gy+c*h4, h, w, x );
+            for( y=0; y<h4/4; y++ ) {
+                y1=h4/4*c+y;
+                _M2[y1]=ADD(MUL(_Gx[y1],_Gx[y1]),MUL(_Gy[y1],_Gy[y1]));
+                if( c==0 ) continue; _m = CMPGT( _M2[y1], _M2[y] );
+                _M2[y] = OR( AND(_m,_M2[y1]), ANDNOT(_m,_M2[y]) );
+                _Gx[y] = OR( AND(_m,_Gx[y1]), ANDNOT(_m,_Gx[y]) );
+                _Gy[y] = OR( AND(_m,_Gy[y1]), ANDNOT(_m,_Gy[y]) );
+            }
+        }
+        // compute gradient mangitude (M) and normalize Gx
+        for( y=0; y<h4/4; y++ ) {
+            _m = MIN( RCPSQRT(_M2[y]), SET(1e10f) );
+            _M2[y] = RCP(_m);
+            if(O) _Gx[y] = MUL( MUL(_Gx[y],_m), SET(acMult) );
+            if(O) _Gx[y] = XOR( _Gx[y], AND(_Gy[y], SET(-0.f)) );
+        };
+        memcpy( M+x*h, M2, h*sizeof(float) );
+        // compute and store gradient orientation (O) via table lookup
+        if( O!=0 ) for( y=0; y<h; y++ ) O[x*h+y] = acost[(int)Gx[y]];
+        if( O!=0 && full ) {
+            y1=((~size_t(O+x*h)+1)&15)/4; y=0;
+            for( ; y<y1; y++ ) O[y+x*h]+=(Gy[y]<0)*PI;
+            for( ; y<h-4; y+=4 ) STRu( O[y+x*h],
+                                       ADD( LDu(O[y+x*h]), AND(CMPLT(LDu(Gy[y]),SET(0.f)),SET(PI)) ) );
+            for( ; y<h; y++ ) O[y+x*h]+=(Gy[y]<0)*PI;
+        }
+    }
+    utils::memory::alFree(Gx); utils::memory::alFree(Gy); utils::memory::alFree(M2);
+}
+
+void hogChannels(float *H, const float *R, const float *N,
+                 int hb, int wb, int nOrients, float clip, int type) {
+#define GETT(blk) t=R1[y]*N1[y-(blk)]; if(t>clip) t=clip; c++;
+    const float r = .2357f;
+    int o, x, y, c;
+    float t;
+    const int nb = wb * hb, nbo = nOrients * nb, hb1 = hb + 1;
+    for (o = 0; o < nOrients; o++)
+        for (x = 0; x < wb; x++) {
+            const float *R1 = R + o * nb + x * hb, *N1 = N + x * hb1 + hb1 + 1;
+            float *H1 = (type <= 1) ? (H + o * nb + x * hb) : (H + x * hb);
+            if (type == 0)
+                for (y = 0; y < hb; y++) {
+                    // store each orientation and normalization (nOrients*4 channels)
+                    c = -1;
+                    GETT(0);
+                    H1[c * nbo + y] = t;
+                    GETT(1);
+                    H1[c * nbo + y] = t;
+                    GETT(hb1);
+                    H1[c * nbo + y] = t;
+                    GETT(hb1 + 1);
+                    H1[c * nbo + y] = t;
+                }
+            else if (type == 1)
+                for (y = 0; y < hb; y++) {
+                    // sum across all normalizations (nOrients channels)
+                    c = -1;
+                    GETT(0);
+                    H1[y] += t * .5f;
+                    GETT(1);
+                    H1[y] += t * .5f;
+                    GETT(hb1);
+                    H1[y] += t * .5f;
+                    GETT(hb1 + 1);
+                    H1[y] += t * .5f;
+                }
+            else if (type == 2)
+                for (y = 0; y < hb; y++) {
+                    // sum across all orientations (4 channels)
+                    c = -1;
+                    GETT(0);
+                    H1[c * nb + y] += t * r;
+                    GETT(1);
+                    H1[c * nb + y] += t * r;
+                    GETT(hb1);
+                    H1[c * nb + y] += t * r;
+                    GETT(hb1 + 1);
+                    H1[c * nb + y] += t * r;
+                }
+        }
+#undef GETT
 }
 
 void fhog(float *M, float *O, float *H, int h, int w, int binSize, int nOrients, int softBin, float clip) {
@@ -286,6 +453,26 @@ void fhog(float *M, float *O, float *H, int h, int w, int binSize, int nOrients,
     float *N, *R1, *R2;
     int o, x;
 
-    R1 = (float*) calloc(wb*hb*nOrients*2, sizeof(float));
-    gradHist(M, O, R1, h, w, binSize, nOrients*2, softBin, true);
+    R1 = (float *) calloc(wb * hb * nOrients * 2, sizeof(float));
+    gradHist(M, O, R1, h, w, binSize, nOrients * 2, softBin, true);
+
+    // compute unnormalized contrast insensitive histograms
+    R2 = (float *) calloc(wb * hb * nOrients, sizeof(float));
+    for (o = 0; o < nOrients; o++) {
+        for (x = 0; x < nb; x++) {
+            R2[o * nb + x] = R1[o * nb + x] + R1[(o + nOrients) * nb + x];
+        }
+    }
+
+    // compute block normalization values
+    N = hogNormMatrix(R2, nOrients, hb, wb, binSize);
+
+    // normalized histograms and texture channels
+    hogChannels(H + nbo * 0, R1, N, hb, wb, nOrients * 2, clip, 1);
+    hogChannels(H + nbo * 2, R2, N, hb, wb, nOrients * 1, clip, 1);
+    hogChannels(H + nbo * 3, R1, N, hb, wb, nOrients * 2, clip, 2);
+
+    free(N);
+    free(R1);
+    free(R2);
 }
